@@ -766,6 +766,39 @@ function initReveal(){
   items.forEach(el => io.observe(el));
 }
 
+/* ---------- Empujón suave: si nadie baja, la página se asoma sola ---------- */
+const HINT_ESPERA = 6000;   // ms de quietud antes del primer asomo
+const HINT_PAUSA  = 7000;   // ms hasta el segundo, que es el último
+const HINT_ASOMO  = 76;     // px que baja y devuelve
+const HINT_DUR    = 1500;   // ms del vaivén completo
+function initScrollHint(){
+  if (reduced) return;                                   // nada de movimiento no pedido
+  if (document.documentElement.scrollHeight - window.innerHeight < HINT_ASOMO * 2) return;
+
+  let propio = false, quieto = true, asomos = 0;
+  const rendirse = () => { quieto = false; };
+  // El gesto del usuario manda: en cuanto toca algo, dejamos de insistir.
+  ['wheel', 'touchstart', 'keydown'].forEach(ev =>
+    window.addEventListener(ev, rendirse, { passive: true, once: true }));
+  window.addEventListener('scroll', () => { if (!propio) rendirse(); }, { passive: true });
+
+  function asomar(){
+    if (!quieto || window.scrollY > 4) return;
+    propio = true;
+    const t0 = performance.now();
+    (function paso(ahora){
+      if (!quieto){ window.scrollTo(0, 0); propio = false; return; }   // el usuario tomó el control
+      const t = Math.min(1, (ahora - t0) / HINT_DUR);
+      window.scrollTo(0, Math.sin(t * Math.PI) * HINT_ASOMO);          // baja y vuelve en un solo arco
+      if (t < 1) return requestAnimationFrame(paso);
+      window.scrollTo(0, 0);
+      setTimeout(() => { propio = false; }, 120);                      // deja pasar el último evento de scroll
+      if (++asomos < 2) setTimeout(asomar, HINT_PAUSA);
+    })(t0);
+  }
+  setTimeout(asomar, HINT_ESPERA);
+}
+
 /* =====================================================================
    SONIDO — todo sintetizado con Web Audio: no depende de archivos externos.
    Timbre de caja musical (senoidales con armónicos que decaen) + reverberación.
@@ -939,6 +972,7 @@ function abrir(){
     document.body.classList.remove('is-locked');
     window.scrollTo(0, 0);
     initReveal();
+    initScrollHint();
     soundBtn.hidden = !audio.ok;
     requestAnimationFrame(() => cover.classList.add('is-leaving'));
   }, 2050);
